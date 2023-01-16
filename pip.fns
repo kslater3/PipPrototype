@@ -1,0 +1,24 @@
+; pip.asm
+LoadSpritesLoop                  = $C059
+LoadPalettes                     = $C03D
+LatchController                  = $C07B
+Forever                          = $C06E
+palette                          = $E000
+ReadLeftDone                     = $C0A7
+LoadPalettesLoop                 = $C04C
+ReadUp                           = $C091
+ReadDown                         = $C094
+ReadStart                        = $C08E
+ReadRightDone                    = $C0B7
+LoadSprites                      = $C057
+ReadA                            = $C085
+ReadB                            = $C088
+vblankwait1                      = $C014
+vblankwait2                      = $C038
+clrmem                           = $C019
+RESET                            = $C000
+sprites                          = $E020
+ReadLeft                         = $C097
+ReadSelect                       = $C08B
+NMI                              = $C071
+ReadRight                        = $C0A7
