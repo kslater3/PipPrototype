@@ -9,6 +9,95 @@
 
   .bank 0
   .org $C000
+
+
+vblankwait:    ; First wait for vblank to make sure PPU is ready
+  BIT $2002
+  BPL vblankwait
+  RTS
+
+
+stepleft:
+  LDX #$00
+offsetleftx:
+  TXA
+  PHA
+  ASL A
+  ASL A
+  TAX
+  LDA $0203, x
+  SEC
+  SBC #$01
+  STA $0203, x
+  PLA
+  TAX
+  INX
+  CPX #$06
+  BNE offsetleftx
+
+  RTS
+
+
+stepright:
+  LDX #$00
+offsetrightx:
+  TXA
+  PHA
+  ASL A
+  ASL A
+  TAX
+  LDA $0203, x
+  CLC
+  ADC #$01
+  STA $0203, x
+  PLA
+  TAX
+  INX
+  CPX #$06
+  BNE offsetrightx
+
+  RTS
+
+
+; Put sprite tiles back to the middle stance with correct left/right facing
+stopstepping:
+  ; If I am both Running and Right Facing then Stop Stepping Right, otherwise
+  ; If I am both Running and Left Facing, then Stop Stepping Left
+  ; Otherwise, just return
+
+  ; I can simplify that logic to just start with a check if I am not running in the first place then get out
+  LDA pipstate
+  AND #%00000001
+  BNE keepstopping
+  RTS
+
+keepstopping:
+  ; Reset Pip State to Not be running
+  LDA pipstate
+  AND #%11111110
+  STA pipstate
+
+  ; Check if he is facing Left or Right
+  LDA pipstate
+  AND #%00000010
+  BEQ stopsteppingleft
+
+  ; Overwrite Sprite with Right Facing Legs and Butt tiles for Middle Stance
+  LDA #$14
+  STA $0211
+  LDA #$13
+  STA $020D
+  RTS
+
+stopsteppingleft: ; Overwrite Sprite with Left Facing Legs and Butt tiles for Middle Stance
+  LDA #$34
+  STA $0211
+  LDA #$33
+  STA $0215
+  RTS
+
+
+
 RESET:
   SEI          ; disable IRQs
   CLD          ; disable decimal mode
@@ -21,9 +110,9 @@ RESET:
   STX $2001    ; disable rendering
   STX $4010    ; disable DMC IRQs
 
-vblankwait1:       ; First wait for vblank to make sure PPU is ready
-  BIT $2002
-  BPL vblankwait1
+
+  JSR vblankwait
+
 
 clrmem:
   LDA #$00
@@ -39,9 +128,8 @@ clrmem:
   INX
   BNE clrmem
 
-vblankwait2:      ; Second wait for vblank, PPU is ready after this
-  BIT $2002
-  BPL vblankwait2
+
+  JSR vblankwait
 
 
 
@@ -123,25 +211,53 @@ ReadDown:
 ReadLeft:
   LDA $4016         ; player 1 - Left
   AND #%00000001    ; only look at bit 0 for Pressed or Not
-  BEQ ReadLeftDone  ; branch to Done if Not Press
+  BEQ NotReadLeft  ; branch to Done if Not Press
 
-                    ; If It Is Pressed
-  LDA $0203         ; load sprite X Position
-  SEC               ; make sure Carry flag is clear so we pacman through the other side
-  SBC #$01          ; subtract 1 from X position, with carry for pacmanning
-  STA $0203         ; write the new X Position over the old one
+  ; If It Is Pressed
+  ; Update Pip State to Running and Left
+  LDA pipstate
+  AND #%11111101   ; 0 is Left so clear that bit
+  ORA #%00000001   ; 1 is Running so set that bit
+  STA pipstate     ; store it back
+
+  ; Move to the left
+  JSR stepleft
+  JMP ReadLeftDone
+
+  ; If it is Not Pressed, and I am facing to the left, then I need to stop stepping just in case I was running before
+NotReadLeft:
+  LDA pipstate
+  AND #%00000010
+  BNE ReadLeftDone
+
+  JSR stopstepping
+
 ReadLeftDone:       ; button is no longer being pressed at this label
 
 
 ReadRight:
   LDA $4016
   AND #%00000001
+  BEQ NotReadRight
+
+  ; If it Is Pressed
+  ; Update Pip State to Running and Left
+  LDA pipstate
+  ORA #%00000011   ; 1 is Running and 1 is Right Facing, so set those bits
+  STA pipstate     ; store it back
+
+  ; Move to the right
+  JSR stepright
+  JMP ReadRightDone
+
+  ; If it is Not Pressed, and I am facing to the right, then I need to stop stepping just in case I was running before
+NotReadRight:
+  LDA pipstate
+  AND #%00000010
   BEQ ReadRightDone
 
-  LDA $0203
-  CLC
-  ADC #$01
-  STA $0203
+  JSR stopstepping
+
 ReadRightDone:
 
 
@@ -157,6 +273,7 @@ palette:
   .db $00,$31,$32,$33,$00,$35,$36,$37,$00,$39,$3A,$3B,$00,$3D,$3E,$0F
   .db $00,$0F,$08,$36,$00,$02,$38,$3C,$00,$1C,$15,$14,$00,$02,$38,$3C
 
+
 sprites:
   ; Pip Starting Sprite
      ;vert tile pal horiz
@@ -168,7 +285,12 @@ sprites:
   .db $88, $15, $00, $90
 
 
-
+pipstate:
+  .db %00000010     ; Pip Initial State
+     ; 76543210
+     ;      ||+ Is Running
+     ;      |+- 1 for Right Facing, 0 for Left Facing
+     ; ++++++-- Nothing Yet
 
 
   .org $FFFA     ;first of the three vectors starts here
